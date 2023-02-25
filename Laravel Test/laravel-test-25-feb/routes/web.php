@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 
+use App\Http\Controllers\UserController;
+
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -13,6 +15,9 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
+Route::prefix('user')->middleware(['apikeyverification'])->group(function () {
+    Route::post('/register', [UserController::class, 'register']);
+    Route::get('/list', [UserController::class, 'list']);
+    Route::get('/{id}', [UserController::class, 'show']);
+    Route::patch('/', [UserController::class, 'patch']);
 });
