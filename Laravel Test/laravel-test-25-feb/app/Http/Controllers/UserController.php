@@ -33,7 +33,7 @@ class UserController
                 'password' => 'required',
                 'photos.*' => 'image|mimes:jpg,png,jpeg,gif,svg|max:8000',
                 'creditcard_type' => 'required|string|max:50',
-                'creditcard_number' => ['required', new CardNumber($request->get('creditcard_number'))],
+                'creditcard_number' => ['required', new CardNumber($request->get('creditcard_number')), 'unique:user_credit_card,creditcard_number'],
                 'creditcard_name' => 'required|string|max:255',
                 'creditcard_expired' => ['required', new CardExpirationDate('my')],
                 'creditcard_ccv' => ['required', new CardCvc($request->get('creditcard_number'))],
@@ -50,7 +50,7 @@ class UserController
                 'name' => $request->get('name'),
                 'address' => $request->get('address'),
                 'email' => $request->get('email'),
-                'password' => $request->get('password'),
+                'password' => bcrypt($request->get('password')),
             ]);
             $user->save();
 
@@ -111,9 +111,10 @@ class UserController
         $of = $request->get('of');
         $lt = $request->get('lt');
 
-        $user = User::when(!empty($q), function ($query) use ($q) {
-            return $query->where('name', 'like', '%' . $q . '%');
-        })
+        $user = User::addSelect('user_id', 'name', 'email', 'address')
+            ->when(!empty($q), function ($query) use ($q) {
+                return $query->where('name', 'like', '%' . $q . '%');
+            })
             ->when(!empty($ob) && !empty($sb), function ($query) use ($ob, $sb) {
                 return $query->orderBy($ob, $sb);
             })
@@ -123,13 +124,38 @@ class UserController
             ->when(!empty($lt), function ($query) use ($lt) {
                 return $query->limit($lt);
             })
-            ->with(['UserPhoto', 'UserCreditCard'])
-            ->get();
+            ->with(['UserPhoto' => function ($query) {
+                $query->select('filename', 'user_id');
+            }])
+            ->with(['UserCreditCard' => function ($query) {
+                $query->select('creditcard_type', 'creditcard_number', 'creditcard_name', 'creditcard_expired', 'user_id');
+            }])
+            ->get()->toArray();
+
+        $user = array_map(function ($v) {
+            $row = $v;
+            $photo = [];
+            if (!empty($row['user_photo'])) {
+                foreach ($row['user_photo'] as $photos) {
+                    $photo[] = $photos['filename'];
+                }
+            }
+            $row['photo'] = $photo;
+            unset($row['user_photo']);
+            $row['creditcard'] = [
+                'type' => $row['user_credit_card']['creditcard_type'],
+                'number' => substr($row['user_credit_card']['creditcard_number'], -4),
+                'name' => $row['user_credit_card']['creditcard_name'],
+                'expired' => $row['user_credit_card']['creditcard_expired']
+            ];;
+            unset($row['user_credit_card']);
+            return $row;
+        }, $user);
 
         return response()
             ->json([
-                "count" => $user->count(),
-                "rows" => $user->toArray()
+                "count" => count($user),
+                "rows" => $user
             ], 200);
     }
 
@@ -143,10 +169,38 @@ class UserController
 
         try {
 
-            $user = User::find($id);
+            $user = User::addSelect('user_id', 'name', 'email', 'address')
+                ->with(['UserPhoto' => function ($query) {
+                    $query->select('filename', 'user_id');
+                }])
+                ->with(['UserCreditCard' => function ($query) {
+                    $query->select('creditcard_type', 'creditcard_number', 'creditcard_name', 'creditcard_expired', 'user_id');
+                }])
+                ->where('user_id', $id)->first()->toArray();
+
             if (empty($user)) {
                 return response()
                     ->json('User not found', 404);
+            }
+
+            $photo = [];
+            if (!empty($user['user_photo'])) {
+                foreach ($user['user_photo'] as $photos) {
+                    $photo[] = $photos['filename'];
+                }
+            }
+            $user['photo'] = $photo;
+            unset($user['user_photo']);
+
+            $userCreditCard = $user['user_credit_card'];
+            if (!empty($userCreditCard)) {
+                $user['creditcard'] = [
+                    'type' => $user['user_credit_card']['creditcard_type'],
+                    'number' => substr($user['user_credit_card']['creditcard_number'], -4),
+                    'name' => $user['user_credit_card']['creditcard_name'],
+                    'expired' => $user['user_credit_card']['creditcard_expired']
+                ];;
+                unset($user['user_credit_card']);
             }
 
             return response()
@@ -173,9 +227,9 @@ class UserController
                 'address' => 'required|string',
                 'email' => 'required|email',
                 'password' => 'required',
-                // 'photos' => 'required',
+                'photos.*' => 'image|mimes:jpg,png,jpeg,gif,svg|max:8000',
                 'creditcard_type' => 'required|string|max:50',
-                'creditcard_number' => ['required', new CardNumber($request->get('creditcard_number'))],
+                'creditcard_number' => ['required', new CardNumber($request->get('creditcard_number')), 'unique:user_credit_card,creditcard_number'],
                 'creditcard_name' => 'required|string|max:255',
                 'creditcard_expired' => ['required', new CardExpirationDate('my')],
                 'creditcard_ccv' => ['required', new CardCvc($request->get('creditcard_number'))],
@@ -192,7 +246,7 @@ class UserController
                     'name' => $request->get('name'),
                     'address' => $request->get('address'),
                     'email' => $request->get('email'),
-                    'password' => $request->get('password'),
+                    'password' => bcrypt($request->get('password')),
                 ]);
 
             User::find($request->get('user_id'))

@@ -46,7 +46,7 @@ class User extends Model
 
     public function userCreditCard()
     {
-        return $this->hasMany(\App\Models\UserCreditCard::class, 'user_id', 'user_id');
+        return $this->hasOne(\App\Models\UserCreditCard::class, 'user_id', 'user_id');
     }
 
     /**
