@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\UserCreditCard;
 use Exception;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\Request;
@@ -10,7 +11,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use LVR\CreditCard\CardCvc;
 use LVR\CreditCard\CardNumber;
 use LVR\CreditCard\CardExpirationDate;
-use Symfony\Component\HttpFoundation\Response;
+use App\Models\UserPhoto;
 
 class UserController
 {
@@ -28,9 +29,9 @@ class UserController
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string',
                 'address' => 'required|string',
-                'email' => 'required|email',
+                'email' => 'required|email|unique:user,email',
                 'password' => 'required',
-                // 'photos' => 'required',
+                'photos.*' => 'image|mimes:jpg,png,jpeg,gif,svg|max:8000',
                 'creditcard_type' => 'required|string|max:50',
                 'creditcard_number' => ['required', new CardNumber($request->get('creditcard_number'))],
                 'creditcard_name' => 'required|string|max:255',
@@ -44,19 +45,34 @@ class UserController
                     ->json($validator->errors(), 400);
             }
 
+
             $user = new User([
                 'name' => $request->get('name'),
                 'address' => $request->get('address'),
                 'email' => $request->get('email'),
                 'password' => $request->get('password'),
+            ]);
+            $user->save();
+
+            $userCreditCard = new UserCreditCard([
                 'creditcard_type' => $request->get('creditcard_type'),
-                'photos' => $request->get('photos'),
                 'creditcard_number' => $request->get('creditcard_number'),
                 'creditcard_name' => $request->get('creditcard_name'),
                 'creditcard_expired' => $request->get('creditcard_expired'),
                 'creditcard_ccv' => $request->get('creditcard_ccv'),
             ]);
-            $user->save();
+
+            $user->userCreditCard()->save($userCreditCard);
+
+            if (!empty($request->file('photos'))) {
+                foreach ($request->file('photos') as $imagefile) {
+                    $path = $imagefile->store('public/images');
+                    $userPhoto = new UserPhoto([
+                        'filename' => $path
+                    ]);
+                    $user->userPhoto()->save($userPhoto);
+                }
+            }
 
             return response()
                 ->json([
@@ -107,6 +123,7 @@ class UserController
             ->when(!empty($lt), function ($query) use ($lt) {
                 return $query->limit($lt);
             })
+            ->with(['UserPhoto', 'UserCreditCard'])
             ->get();
 
         return response()
@@ -176,13 +193,27 @@ class UserController
                     'address' => $request->get('address'),
                     'email' => $request->get('email'),
                     'password' => $request->get('password'),
+                ]);
+
+            User::find($request->get('user_id'))
+                ->userCreditCard()
+                ->update([
                     'creditcard_type' => $request->get('creditcard_type'),
-                    'photos' => $request->get('photos'),
                     'creditcard_number' => $request->get('creditcard_number'),
                     'creditcard_name' => $request->get('creditcard_name'),
                     'creditcard_expired' => $request->get('creditcard_expired'),
                     'creditcard_ccv' => $request->get('creditcard_ccv'),
                 ]);
+
+            if (!empty($request->file('photos'))) {
+                foreach ($request->file('photos') as $imagefile) {
+                    $path = $imagefile->store('public/images');
+                    $userPhoto = new UserPhoto([
+                        'filename' => $path
+                    ]);
+                    $user->userPhoto()->save($userPhoto);
+                }
+            }
 
             return response()
                 ->json([
