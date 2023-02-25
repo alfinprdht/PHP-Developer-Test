@@ -4,7 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\MaintenanceSchedule;
 use Closure;
-use Illuminate\Support\Carbon;
+use App\Models\ApiToken;
 
 class ApiKeyVerification
 {
@@ -15,7 +15,7 @@ class ApiKeyVerification
      * @param  \Closure  $next
      * @return mixed
      */
-    public function handle($request, Closure $next, ...$scopes)
+    public function handle($request, Closure $next)
     {
         $apiKey = $request->header('API-key');
         if (empty($apiKey)) {
@@ -24,7 +24,10 @@ class ApiKeyVerification
             ], 403);
         }
 
-        if ($apiKey != 'HiJhvL$T27@1u^%u86g') {
+        $checkToken = ApiToken::where('code', $apiKey)
+            ->whereRaw('expired_at >= now()');
+
+        if (!$checkToken->exists()) {
             return response()->json([
                 'error' => 'Invalid API key.'
             ], 401);
